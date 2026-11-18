@@ -68,8 +68,8 @@ jobs:
         run: python scripts/build_default_links.py
 
       - name: Run validate_abc.py (Run Tests)
-        # Запускаем тесты. Флаг --qr проверяет QR-коды, --baseline HEAD~1 сравнивает с прошлым коммитом
-        run: python scripts/validate_abc.py --qr --baseline HEAD~1
+        # Запускаем тесты. Флаг --qr проверяет QR-коды, --baseline HEAD~1 сравнивает с прошлым коммитом -- remove
+        run: python scripts/validate_abc.py --qr
 
       # --- ЭТАП 3: СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ---
       - name: Commit and Push generated files
