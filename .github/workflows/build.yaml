@@ -46,7 +46,7 @@ jobs:
 
       - name: Build geoip.dat
         run: |
-          go run github.com/v2fly/geoip@latest convert -c ./geoip-config.json
+          go run github.com/v2fly/geoip@latest -c ./geoip-config.json
 
       # --- ЭТАП 2: PYTHON СКРИПТЫ (ДОКУМЕНТАЦИЯ И ТЕСТЫ) ---
       - name: Set up Python
