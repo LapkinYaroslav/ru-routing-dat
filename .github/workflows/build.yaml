@@ -1,0 +1,108 @@
+name: Build Geo Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 0" # Каждое воскресенье
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "*.dat"
+      - "*.png"
+      - "*.md"
+      - "*.DEEPLINK"
+
+# Даем права на пуш изменений и создание релиза
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout codebase
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Важно для validate_abc.py (--baseline)
+
+      # --- ЭТАП 1: СБОРКА .DAT ФАЙЛОВ (GO) ---
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Set variables
+        run: echo "TAG_NAME=$(date +%Y%m%d%H%M)" >> $GITHUB_ENV
+
+      - name: Download ru.txt from simple-ru-geoip release
+        run: |
+          curl -L "https://github.com/LapkinYaroslav/simple-ru-geoip/releases/latest/download/ru.txt" -o ru.txt
+          curl -L "https://github.com/LapkinYaroslav/simple-ru-geoip/releases/latest/download/private.txt" -o private.txt || echo "private.txt not found"
+
+      - name: Build geosite.dat
+        run: |
+          go run github.com/v2fly/domain-list-community@latest --datapath=./data-geosite --outputdir=. --outputname=geosite.dat
+
+      - name: Build geoip.dat
+        run: |
+          go run github.com/v2fly/geoip@latest convert -c ./geoip-config.json
+
+      # --- ЭТАП 2: PYTHON СКРИПТЫ (ДОКУМЕНТАЦИЯ И ТЕСТЫ) ---
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11' # Берем стабильную версию
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install qrcode[pil] zxing-cpp Pillow
+
+      - name: Run build_metadata.py (Generate Stats & README)
+        # Скрипт обновит CATEGORY_STATS.md и README.md
+        run: python scripts/build_metadata.py
+
+      - name: Run build_default_links.py (Generate QR & Deeplinks)
+        # Скрипт обновит .DEEPLINK и .QR.png для HAPP и INCY
+        run: python scripts/build_default_links.py
+
+      - name: Run validate_abc.py (Run Tests)
+        # Запускаем тесты. Флаг --qr проверяет QR-коды, --baseline HEAD~1 сравнивает с прошлым коммитом
+        run: python scripts/validate_abc.py --qr --baseline HEAD~1
+
+      # --- ЭТАП 3: СОХРАНЕНИЕ РЕЗУЛЬТАТОВ ---
+      - name: Commit and Push generated files
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          
+          # Добавляем все сгенерированные файлы (md, png, deeplink)
+          git add README.md CATEGORY_STATS.md HAPP/ INCY/
+          
+          # Если есть изменения, коммитим и пушим
+          if ! git diff --cached --quiet; then
+            git commit -m "Auto-update metadata and docs: $(date +'%Y-%m-%d')"
+            git push
+          else
+            echo "No changes to commit"
+          fi
+
+      - name: Generate sha256 checksums
+        run: |
+          sha256sum geosite.dat > geosite.dat.sha256sum
+          sha256sum geoip.dat > geoip.dat.sha256sum
+
+      - name: Create Release and Upload Assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$TAG_NAME" \
+            geosite.dat \
+            geoip.dat \
+            geosite.dat.sha256sum \
+            geoip.dat.sha256sum \
+            --repo $GITHUB_REPOSITORY \
+            --title "GeoData $TAG_NAME" \
+            --notes "Автоматическая сборка" \
+            --latest
