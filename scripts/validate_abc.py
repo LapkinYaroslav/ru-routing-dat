@@ -94,7 +94,8 @@ def baseline_checks(ref, data):
         path = f"{client}/DEFAULT.JSON"
         before = json.loads(old(path))
         after = json.loads((ROOT / path).read_text())
-        before["DirectSites"].remove("geosite:mailru")
+        if "geosite:mailru" in before["DirectSites"]:
+            before["DirectSites"].remove("geosite:mailru")
         before["LastUpdated"] = after["LastUpdated"]
         assert before == after, f"Unexpected profile change: {path}"
     for path in unchanged:
